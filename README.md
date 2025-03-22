@@ -20,22 +20,44 @@ counters. Visit the [PAPI website](http://icl.utk.edu/papi) for more information
 
 Note that this crate does not provide a high-level interface to PAPI.
 
-## Environment Variables
+## Building
 
-There are two environment variables to specify a custom PAPI library path:
-- `PAPI_PREFIX`: required to generate `bindings.rs`
-- `LD_LIBRARY_PATH`: required to dynamically link `libpapi.so`
+tested with papi version 7.2
 
-Let's assume you installed PAPI in `/opt/papi/5.7.0/`, then you can test by
+By default pkg-config is used to detect libraray paths.  
+Install papi and pkg-config with your distro package manager.
+
 ```bash
-$ PAPI_PREFIX=/opt/papi/5.7.0/ LD_LIBRARY_PATH=/opt/papi/5.7.0/lib:$LD_LIBRARY_PATH cargo test
+apt install libpapi-dev pkg-config
 ```
 
-To avoid setting `LD_LIBRARY_PATH`, you can configure the search path
-globally by running:
+build and test this library
+
 ```bash
-$ sudo echo "/opt/papi/5.7.0/" > /etc/ld.so.conf.d/papi.conf
-$ sudo ldconfig
+$ cargo test
+```
+
+# Custom library path
+
+If papi libraray is not installed where pkg-config can discover it automaticaly
+pass variable `PKG_CONFIG_PATH` to installed folder accordingly. 
+
+For example if you compiled and installed papi libraray as
+
+```bash
+$ ./configure --prefix=<INSTALL_DIR> && make && make install
+```
+
+You should find pkg-config folder in  `<INSTALL_DIR>/lib/pkgconfig`
+
+```bash
+$ PKG_CONFIG_PATH=<INSTALL_DIR>/lib/pkgconfig cargo test --features static-linkage
+```
+Feature flag static-linkage enables static linkage, or else you will need to set
+`LD_LIBRARY_PATH` accordingly for each run of binary
+
+```bash
+$ PKG_CONFIG_PATH=<INSTALL_DIR>/lib/pkgconfig LD_LIBRARY_PATH=<INSTALL_DIR>/lib/ cargo test
 ```
 
 ## Platforms
@@ -49,8 +71,8 @@ The following platforms are currently tested:
 
 The following dependency versions are currently required:
 
-* `rustc` >= 1.36
-* `gcc` >= 4.8 or `clang` >= 3.8
+* `rustc / cargo` >= 1.70
+* `clang` 
 
 ## License
 

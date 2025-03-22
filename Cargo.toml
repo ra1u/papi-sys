@@ -1,6 +1,6 @@
 [package]
 name = "papi-sys"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Clemens Lutz <lutzcle@cml.li>", "Yeonsoo Kim <alkorang@outlook.com>"]
 
 description = "PAPI (Performance API) bindings for Rust"
@@ -22,7 +22,10 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 
 [build-dependencies]
-bindgen = "0.50"
+bindgen = "0.71"
+pkg-config = "0.3.32"
 
-[dev-dependencies]
-lazy_static = "1.4.0"
+
+[features]
+default = []
+static-linkage = []

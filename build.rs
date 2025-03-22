@@ -14,51 +14,75 @@ use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Output};
+use std::vec::Vec;
 
-fn main() -> std::io::Result<()> {
+fn assert_command_ok(output: &Output, error_message: &str) -> std::io::Result<()> {
+    if !output.status.success() {
+        let to_str = |s: &[u8]| String::from_utf8_lossy(s).to_string();
+        panic!(
+            "{}: {} {}",
+            error_message,
+            to_str(&output.stdout),
+            to_str(&output.stderr)
+        );
+    }
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let papi_prefix_path = env::var("PAPI_PREFIX").map(|p| PathBuf::from(p)).ok();
+    let library = pkg_config::probe_library("papi")?;
+    let clang_args = library
+        .include_paths
+        .iter()
+        .map(|path| format!("-I{}", path.to_string_lossy()))
+        .collect::<Vec<_>>();
 
-    let clang_args = if let Some(p) = papi_prefix_path {
-        println!("cargo:rustc-link-search={}", p.join("lib").display());
-        println!("cargo:rust-flags=-L{}", p.join("lib").display());
-
-        vec![
-            format!("-I{}", p.join("include").display()),
-            format!("-L{}", p.join("lib").display()),
-        ]
-    } else {
-        Vec::new()
-    };
-
+   #[cfg(feature = "static-linkage")]    
+    println!("cargo:rustc-link-lib=static=papi");
+    #[cfg(not(feature = "static-linkage"))]
     println!("cargo:rustc-link-lib=papi");
 
     bindgen::builder()
-        .rustfmt_bindings(false)
-        .header("wrapper.h")
+        .header("src/wrapper.h")
         .clang_args(clang_args.iter())
-        .whitelist_recursively(false)
-        .whitelist_type("^PAPI_[[:alpha:]_]+")
-        .whitelist_type("^_papi_[[:alpha:]_]+")
-        .whitelist_function("^PAPI_[[:alpha:]_]+")
-        .whitelist_function("^_papi_[[:alpha:]_]+")
-        .whitelist_var("^PAPI_[[:alpha:]_]+")
-        .whitelist_var("^_papi_[[:alpha:]_]+")
-        .whitelist_type("caddr_t")
-        .whitelist_type("__caddr_t")
-        .whitelist_type("_dmem_t")
-        .whitelist_type("event_info")
+        .allowlist_recursively(false)
+        .allowlist_type("^PAPI_[[:alpha:]_]+")
+        .allowlist_type("^_papi_[[:alpha:]_]+")
+        .allowlist_function("^PAPI_[[:alpha:]_]+")
+        .allowlist_function("^_papi_[[:alpha:]_]+")
+        .allowlist_var("^PAPI_[[:alpha:]_]+")
+        .allowlist_var("^_papi_[[:alpha:]_]+")
+        .allowlist_type("caddr_t")
+        .allowlist_type("__caddr_t")
+        .allowlist_type("_dmem_t")
+        .allowlist_type("event_info")
+        .allowlist_type("vptr_t")
         .generate()
         .expect("Unable to generate PAPI bindings")
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Unable to write PAPI bindings");
 
-    let codegen_stdout = Command::new("sh")
-        .arg("codegen.sh")
+    // generate trivial binary that exposes versions of PAPI
+    // use clang to generate codegen
+    let codegen_binary_path = out_path.join("codegen");
+    let codegen = Command::new("clang")
+        .args(clang_args.iter())
+        .args(["-o", codegen_binary_path.to_str().unwrap()])
+        .arg("src/codegen.c")
         .output()
-        .unwrap()
-        .stdout;
+        .expect("failed to execute process");
+    assert_command_ok(&codegen, "Codegen failed")?;
+
+    // run codegen and fetch output
+    let codegen_run = Command::new(codegen_binary_path)
+        .output()
+        .expect("failed to execute process");
+    assert_command_ok(&codegen_run, "Codegen run failed")?;
+
+    let codegen_stdout = codegen_run.stdout;
+
     let mut file = File::create(out_path.join("codegen.rs"))?;
     file.write_all(&codegen_stdout)?;
     file.sync_all()?;
